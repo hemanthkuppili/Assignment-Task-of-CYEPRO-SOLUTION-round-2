@@ -1,5 +1,6 @@
 // CONSTANTS
-const API_BASE = 'http://localhost:3000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
 let socket;
 let currentUser = null;
 let classificationChart, perfChart;
@@ -59,7 +60,7 @@ function showTab(tabName) {
 
 // SOCKET.IO
 function initSocket() {
-    socket = io('http://localhost:3000');
+    socket = io(SOCKET_URL);
     socket.on('event_ingested', (data) => {
         addFeedItem(data);
         fetchMetrics(); // Update charts
