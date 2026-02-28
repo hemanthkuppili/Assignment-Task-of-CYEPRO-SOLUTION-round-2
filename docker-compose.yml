@@ -1,0 +1,47 @@
+services:
+  # Infrastructure
+  mongodb:
+    image: mongo:latest
+    container_name: pe-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  redis:
+    image: redis:latest
+    container_name: pe-redis
+    ports:
+      - "6379:6379"
+
+  # Application Tier
+  p-engine-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: pe-server
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_URI=mongodb://pe-mongo:27017/priority_engine
+      - REDIS_URI=redis://pe-redis:6379
+      - DB_TYPE=mongodb
+      - NODE_ENV=production
+    depends_on:
+      - mongodb
+      - redis
+
+  p-engine-ui:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: pe-ui
+    ports:
+      - "8080:80"
+    depends_on:
+      - p-engine-server
+
+volumes:
+  mongo-data:
+
+

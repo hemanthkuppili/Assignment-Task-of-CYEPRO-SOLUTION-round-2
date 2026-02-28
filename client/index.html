@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Priority Engine | Admin Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="dark-mode">
+    <div id="login-screen" class="screen full-screen glass-bg">
+        <div class="login-card">
+            <h1 class="glow-text">P-Engine Gateway</h1>
+            <p>Production-grade prioritization engine.</p>
+            <div class="credentials-hint">
+                <small>Demo Credentials: <code>admin / priority_2026</code></small>
+            </div>
+            <form id="login-form">
+                <input type="text" id="username" placeholder="Username" required>
+                <input type="password" id="password" placeholder="Password" required>
+                <button type="submit" class="btn-primary">Authenticate</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="dashboard-screen" class="screen main-dashboard hidden">
+        <aside class="sidebar glass-bg">
+            <div class="logo">
+                <i data-lucide="zap" class="neon-icon"></i>
+                <span>PriorityEngine</span>
+            </div>
+            <nav>
+                <a href="#stats" class="nav-item active" onclick="showTab('stats')"><i data-lucide="layout-dashboard"></i> Overview</a>
+                <a href="#simulator" class="nav-item" onclick="showTab('simulator')"><i data-lucide="terminal"></i> Simulator</a>
+                <a href="#audit" class="nav-item" onclick="showTab('audit')"><i data-lucide="scroll-text"></i> Audit Logs</a>
+                <a href="#rules" class="nav-item" onclick="showTab('rules')"><i data-lucide="settings"></i> Rules Manager</a>
+            </nav>
+            <div class="status-indicator">
+                <div class="health-dot green"></div> <span id="health-label">System Healthy</span>
+            </div>
+        </aside>
+
+        <main class="content">
+            <header>
+                <h2 id="tab-title">System Overview</h2>
+                <div class="user-meta">
+                    <span id="user-display">Admin User</span>
+                    <button id="logout-btn" class="btn-ghost">Logout</button>
+                </div>
+            </header>
+
+            <section id="tab-stats" class="tab-content active">
+                <div class="metrics-grid">
+                    <div class="metric-card glass-bg">
+                        <small>NOW Processing</small>
+                        <h3 id="stat-now">0</h3>
+                    </div>
+                    <div class="metric-card glass-bg">
+                        <small>LATER Queue</small>
+                        <h3 id="stat-later">0</h3>
+                    </div>
+                    <div class="metric-card glass-bg">
+                        <small>NEVER Discarded</small>
+                        <h3 id="stat-never">0</h3>
+                    </div>
+                    <div class="metric-card glass-bg">
+                        <small>AI Latency (avg)</small>
+                        <h3 id="stat-latency">--</h3>
+                    </div>
+                </div>
+                
+                <div class="charts-row">
+                    <div class="chart-container glass-bg">
+                        <h4>Classification Mix</h4>
+                        <canvas id="classChart"></canvas>
+                    </div>
+                    <div class="chart-container glass-bg">
+                        <h4>API Performance</h4>
+                        <canvas id="perfChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="recent-list glass-bg">
+                    <h4>Live Global Feed</h4>
+                    <div id="event-feed" class="feed-container">
+                        <!-- Socket events appear here -->
+                    </div>
+                </div>
+            </section>
+
+            <section id="tab-simulator" class="tab-content hidden">
+                 <div class="card glass-bg">
+                    <h3>Simulation Console</h3>
+                    <p>Trigger an event to see how the decision engine reacts.</p>
+                    <form id="sim-form">
+                        <div class="input-group">
+                            <label>User ID</label>
+                            <input type="text" id="sim-user-id" value="user_777">
+                        </div>
+                        <div class="input-group">
+                            <label>Category</label>
+                            <select id="sim-category">
+                                <option value="SECURITY">Security Alert</option>
+                                <option value="TRANSACTIONAL">Transaction</option>
+                                <option value="MARKETING">Marketing</option>
+                                <option value="SOCIAL">Social Update</option>
+                                <option value="SYSTEM">System Info</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Message Payload (JSON Content)</label>
+                            <textarea id="sim-content" placeholder="E.g., Your account has been logged in from unknown IP..."></textarea>
+                        </div>
+                        <button type="submit" class="btn-primary">Process Event</button>
+                    </form>
+                    
+                    <div id="sim-result" class="result-area hidden">
+                        <h4>Decision Logic Output</h4>
+                        <div class="result-card glass-bg">
+                            <div class="result-header">
+                                <span class="badge" id="sim-final-status">---</span>
+                                <span class="badge" id="sim-via">---</span>
+                            </div>
+                            <pre id="sim-detail"></pre>
+                        </div>
+                    </div>
+                 </div>
+            </section>
+
+            <section id="tab-audit" class="tab-content hidden">
+                <div class="list-controls glass-bg">
+                    <input type="text" id="audit-search" placeholder="Filter by event ID or message...">
+                </div>
+                <div class="table-container glass-bg">
+                    <table id="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Event ID</th>
+                                <th>Classification</th>
+                                <th>Reason / Step</th>
+                                <th>Confidence</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-list"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="tab-rules" class="tab-content hidden">
+                 <div class="rules-header">
+                    <h3>Priority Dynamic Rules</h3>
+                    <button id="add-rule-btn" class="btn-primary">+ Add New Rule</button>
+                 </div>
+                 <div class="table-container glass-bg">
+                    <table id="rules-table">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Pattern (RegExp)</th>
+                                <th>Priority Target</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rules-list">
+                            <!-- Rules appear here -->
+                        </tbody>
+                    </table>
+                 </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Rule Modal -->
+    <div id="rule-modal" class="modal hidden">
+        <div class="modal-content glass-bg">
+            <p>Coming Soon...</p>
+            <button onclick="closeModal()" class="btn-ghost">Close</button>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
