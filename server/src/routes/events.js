@@ -6,10 +6,14 @@ const router = express.Router();
 
 export default router.post('/', authMiddleware, async (req, res) => {
     try {
-        const { user_id, category, content, metadata } = req.body;
+        const user_id = req.body.user_id || req.body.userId;
+        const { category, content, metadata } = req.body;
 
         if (!user_id || !category || !content) {
-            return res.status(400).json({ error: 'Missing required fields: user_id, category, content' });
+            return res.status(400).json({
+                error: 'Missing required fields: user_id (or userId), category, content',
+                received: { user_id, category, content }
+            });
         }
 
         const result = await processIncomingEvent({

@@ -1,8 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { generateSimHash, hammingDistance } from '../utils/simhash.js';
 import { redis } from '../config/redis.js';
 import { auditLog } from './auditService.js';
 import { aiClassificationQueue, deliveryQueue } from '../config/bullmq.js';
+import { simulateBackgroundProcess, simulateDelivery } from '../workers/aiWorker.js';
 import { getDb } from '../config/database.js';
 import { config } from '../config/index.js';
 
@@ -66,11 +68,16 @@ export const processIncomingEvent = async (eventPayload) => {
     }
 
     // 4. AI CLASSIFICATION (ASYNC)
-    // We add to AI classification queue and return "PENDING_AI" to the initial caller
-    await aiClassificationQueue.add('classify', { eventId, user_id, category, content }, {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 2000 }
-    });
+    // We add to AI classification queue and return "PENDING" to the initial caller
+    if (redis.constructor.name === 'MemoryRedis') {
+        // Trigger simulation instantly (Fire & Forget)
+        simulateBackgroundProcess({ eventId, user_id, category, content });
+    } else {
+        await aiClassificationQueue.add('classify', { eventId, user_id, category, content }, {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 }
+        });
+    }
 
     await auditLog(eventId, 'AI_QUEUE', 'PENDING', { queue: 'AI_CLASSIFICATION' });
     return { eventId, status: 'PENDING', via: 'AI' };
@@ -90,10 +97,18 @@ async function getDbRulesForCategory(cat) {
 
 export const finalRouting = async (eventId, decision, payload) => {
     if (decision === 'NOW') {
-        await deliveryQueue.add('deliver', { eventId, payload });
+        if (redis.constructor.name === 'MemoryRedis') {
+            simulateDelivery(eventId, payload);
+        } else {
+            await deliveryQueue.add('deliver', { eventId, payload });
+        }
     } else if (decision === 'LATER') {
         // Schedule for later (e.g., 4 hours)
-        await deliveryQueue.add('deliver', { eventId, payload }, { delay: 4 * 60 * 60 * 1000 });
+        if (redis.constructor.name === 'MemoryRedis') {
+            setTimeout(() => simulateDelivery(eventId, payload), 5000); // 5 sec "later" for demo
+        } else {
+            await deliveryQueue.add('deliver', { eventId, payload }, { delay: 4 * 60 * 60 * 1000 });
+        }
     }
     await updateEventStatus(eventId, decision);
 };

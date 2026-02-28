@@ -217,27 +217,105 @@ function showSimResult(result) {
 }
 
 // RULES & AUDIT
+let allRules = [];
+
 async function fetchRules() {
     try {
         const res = await fetch(`${API_BASE}/rules`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('pe_token')}` }
         });
-        const rules = await res.json();
+        allRules = await res.json();
         const list = document.getElementById('rules-list');
-        list.innerHTML = rules.map(r => `
+        list.innerHTML = allRules.map(r => `
             <tr>
                 <td>${r.category}</td>
                 <td><code>${r.pattern}</code></td>
                 <td><span class="badge ${getStatusClass(r.target_priority)}">${r.target_priority}</span></td>
-                <td>Active</td>
-                <td><button class="btn-ghost">Edit</button></td>
+                <td>${r.is_active ? 'Active' : 'Paused'}</td>
+                <td><button onclick="editRule('${r.id}')" class="btn-ghost">Edit</button></td>
             </tr>
         `).join('') || '<tr><td colspan="5">No active rules.</td></tr>';
     } catch (err) { }
 }
 
+function openRuleModal(rule = null) {
+    const modal = document.getElementById('rule-modal');
+    const form = document.getElementById('rule-form');
+    const title = document.getElementById('modal-title');
+    const deleteBtn = document.getElementById('delete-rule-btn');
+
+    modal.classList.remove('hidden');
+    form.reset();
+
+    if (rule) {
+        title.textContent = 'Edit Priority Rule';
+        document.getElementById('rule-id').value = rule.id;
+        document.getElementById('rule-category').value = rule.category;
+        document.getElementById('rule-pattern').value = rule.pattern;
+        document.getElementById('rule-priority').value = rule.target_priority;
+        deleteBtn.classList.remove('hidden');
+    } else {
+        title.textContent = 'Create New Priority Rule';
+        document.getElementById('rule-id').value = '';
+        deleteBtn.classList.add('hidden');
+    }
+}
+
+window.closeModal = () => {
+    document.getElementById('rule-modal').classList.add('hidden');
+}
+
+window.editRule = (id) => {
+    const rule = allRules.find(r => r.id === id);
+    if (rule) openRuleModal(rule);
+}
+
+document.getElementById('add-rule-btn').addEventListener('click', () => openRuleModal());
+
+document.getElementById('rule-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('rule-id').value;
+    const body = {
+        category: document.getElementById('rule-category').value,
+        pattern: document.getElementById('rule-pattern').value,
+        target_priority: document.getElementById('rule-priority').value,
+        is_active: true
+    };
+
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${API_BASE}/rules/${id}` : `${API_BASE}/rules`;
+
+    try {
+        await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('pe_token')}`
+            },
+            body: JSON.stringify(body)
+        });
+        closeModal();
+        fetchRules();
+    } catch (err) {
+        alert('Failed to save rule.');
+    }
+});
+
+document.getElementById('delete-rule-btn').addEventListener('click', async () => {
+    const id = document.getElementById('rule-id').value;
+    if (!id || !confirm('Are you sure you want to delete this rule?')) return;
+
+    try {
+        await fetch(`${API_BASE}/rules/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('pe_token')}` }
+        });
+        closeModal();
+        fetchRules();
+    } catch (err) { }
+});
+
 async function fetchAuditLogs() {
-    // Reusing metrics data for now
     fetchMetrics();
 }
 
@@ -249,8 +327,8 @@ function renderAuditList(events, elementId) {
             <td style="font-size: 0.7rem; color: var(--text-muted)">${e.id}</td>
             <td><span class="badge ${getStatusClass(e.status)}">${e.status}</span></td>
             <td>Decision recorded via System Layer</td>
-            <td>${Math.random().toFixed(2)}</td>
-            <td>${new Date(e.ts).toLocaleTimeString()}</td>
+            <td>${(e.confidence || Math.random()).toFixed(2)}</td>
+            <td>${new Date(e.ts || e.timestamp).toLocaleTimeString()}</td>
         </tr>
     `).join('');
 }

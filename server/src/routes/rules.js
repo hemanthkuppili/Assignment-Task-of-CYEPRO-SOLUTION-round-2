@@ -23,6 +23,7 @@ export default router
         }
 
         const ruleDoc = {
+            id: Math.random().toString(36).substring(7),
             category,
             pattern,
             target_priority,
@@ -38,7 +39,36 @@ export default router
 
         res.status(201).json({ message: 'Rule added.', rule: ruleDoc });
     })
+    .put('/:id', adminMiddleware, async (req, res) => {
+        const { id } = req.params;
+        const { category, pattern, target_priority, is_active } = req.body;
+        const db = await getDb();
+
+        const updateData = {
+            category,
+            pattern,
+            target_priority,
+            is_active,
+            updated_at: new Date()
+        };
+
+        if (config.dbType === 'mongodb') {
+            await db.collection('rules').updateOne({ id: id }, { $set: updateData });
+        } else {
+            await db('rules').where({ id: id }).update(updateData);
+        }
+
+        res.json({ message: 'Rule updated.' });
+    })
     .delete('/:id', adminMiddleware, async (req, res) => {
-        // Implement delete logic based on ID
+        const { id } = req.params;
+        const db = await getDb();
+
+        if (config.dbType === 'mongodb') {
+            await db.collection('rules').deleteOne({ id: id });
+        } else {
+            await db('rules').where({ id: id }).delete();
+        }
+
         res.json({ message: 'Rule deleted.' });
     });

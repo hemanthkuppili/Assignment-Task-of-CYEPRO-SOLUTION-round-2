@@ -37,9 +37,24 @@ services:
       dockerfile: Dockerfile
     container_name: pe-ui
     ports:
-      - "8080:80"
+      - "5173:80"
     depends_on:
       - p-engine-server
+
+  p-engine-java:
+    build:
+      context: ./spring-engine
+      dockerfile: Dockerfile
+    container_name: pe-java
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://pe-mongo:27017/priority_engine
+      - SPRING_DATA_REDIS_HOST=pe-redis
+      - SPRING_DATA_REDIS_PORT=6379
+    depends_on:
+      - mongodb
+      - redis
 
 volumes:
   mongo-data:
