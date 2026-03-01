@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { generateSimHash, hammingDistance } from '../utils/simhash.js';
-import { redis } from '../config/redis.js';
+import { redis, isRedisMock } from '../config/redis.js';
 import { auditLog } from './auditService.js';
 import { aiClassificationQueue, deliveryQueue } from '../config/bullmq.js';
 import { simulateBackgroundProcess, simulateDelivery } from '../workers/aiWorker.js';
@@ -69,7 +69,7 @@ export const processIncomingEvent = async (eventPayload) => {
 
     // 4. AI CLASSIFICATION (ASYNC)
     // We add to AI classification queue and return "PENDING" to the initial caller
-    if (redis.constructor.name === 'MemoryRedis') {
+    if (isRedisMock()) {
         // Trigger simulation instantly (Fire & Forget)
         simulateBackgroundProcess({ eventId, user_id, category, content });
     } else {
@@ -97,14 +97,14 @@ async function getDbRulesForCategory(cat) {
 
 export const finalRouting = async (eventId, decision, payload) => {
     if (decision === 'NOW') {
-        if (redis.constructor.name === 'MemoryRedis') {
+        if (isRedisMock()) {
             simulateDelivery(eventId, payload);
         } else {
             await deliveryQueue.add('deliver', { eventId, payload });
         }
     } else if (decision === 'LATER') {
         // Schedule for later (e.g., 4 hours)
-        if (redis.constructor.name === 'MemoryRedis') {
+        if (isRedisMock()) {
             setTimeout(() => simulateDelivery(eventId, payload), 5000); // 5 sec "later" for demo
         } else {
             await deliveryQueue.add('deliver', { eventId, payload }, { delay: 4 * 60 * 60 * 1000 });
