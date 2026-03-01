@@ -28,10 +28,47 @@ class MemoryRedis {
 }
 
 import { config } from './index.js';
-// We skip the real ioredis import if we want to avoid the crash entirely in restricted environments
-// But we'll try to use it cautiously.
+import Redis from 'ioredis';
 
-let redisInstance = new MemoryRedis();
-export const isRedisMock = () => true;
+let isMock = false;
+let redisInstance;
+
+try {
+    if (!config.redisUri) throw new Error('REDIS_URI is undefined or empty');
+
+    // Naively prefix 'redis://' if it's missing but user provided host:port (common mistake)
+    let connectionString = config.redisUri;
+    if (!connectionString.startsWith('redis://') && !connectionString.startsWith('rediss://')) {
+        connectionString = `redis://${connectionString}`;
+    }
+
+    redisInstance = new Redis(connectionString, {
+        maxRetriesPerRequest: 1,
+        enableOfflineQueue: false,
+        retryStrategy(times) {
+            if (times > 2) return null; // stop retrying after 2 attempts
+            return 1000;
+        }
+    });
+
+    redisInstance.on('error', (err) => {
+        if (!isMock) {
+            console.warn('Real Redis connection failed (Falling back to Memory Simulation):', err.message);
+            isMock = true;
+            redisInstance = new MemoryRedis();
+        }
+    });
+
+    redisInstance.on('ready', () => {
+        console.log('Redis: Successfully connected to Real Redis Cluster!');
+    });
+
+} catch (err) {
+    console.warn('Redis Connection Failed (Falling back to Memory Simulation):', err.message);
+    isMock = true;
+    redisInstance = new MemoryRedis();
+}
+
+export const isRedisMock = () => isMock;
 export const redis = redisInstance;
 export default redisInstance;
