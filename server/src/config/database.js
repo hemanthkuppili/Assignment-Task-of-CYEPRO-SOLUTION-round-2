@@ -66,12 +66,38 @@ class MemoryDB {
 }
 
 import { config } from './index.js';
+import { MongoClient } from 'mongodb';
 
 let memoryDb = new MemoryDB();
+let dbInstance = null;
 
-export const connectMongo = async () => memoryDb;
+export const connectMongo = async () => {
+    if (dbInstance) return dbInstance;
+
+    try {
+        if (!config.mongodbUri) throw new Error('MONGODB_URI is undefined or empty');
+
+        console.log('MongoDB: Attempting connection to Atlas Cluster...');
+        const client = new MongoClient(config.mongodbUri, {
+            serverSelectionTimeoutMS: 5000
+        });
+
+        await client.connect();
+        dbInstance = client.db();
+        console.log('MongoDB: Successfully connected to Real Database Cluster!');
+        return dbInstance;
+    } catch (error) {
+        console.warn('MongoDB Atlas Connection Failed (Falling back to Memory Simulation):', error.message);
+        dbInstance = memoryDb;
+        return dbInstance;
+    }
+};
+
 export const connectPg = async () => null;
 
 export const getDb = async () => {
-    return memoryDb;
+    if (!dbInstance) {
+        return await connectMongo();
+    }
+    return dbInstance;
 };
