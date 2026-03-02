@@ -178,12 +178,18 @@ function updateCharts(summary) {
 document.getElementById('sim-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('button');
-    btn.disabled = true;
-    btn.textContent = 'Processing...';
 
     const userId = document.getElementById('sim-user-id').value;
     const category = document.getElementById('sim-category').value;
     const content = document.getElementById('sim-content').value;
+
+    if (!content || !content.trim()) {
+        alert('Please type a message in the "Message Payload" box before submitting.');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
 
     try {
         const res = await fetch(`${API_BASE}/events`, {
@@ -195,6 +201,11 @@ document.getElementById('sim-form').addEventListener('submit', async (e) => {
             body: JSON.stringify({ user_id: userId, category, content })
         });
         const result = await res.json();
+
+        if (!res.ok) {
+            alert('Server error: ' + (result.error || JSON.stringify(result)));
+            return;
+        }
 
         showSimResult(result);
     } catch (err) {
