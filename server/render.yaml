@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: priority-engine-backend
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: MONGODB_URI
+        sync: false
+      - key: REDIS_URI
+        sync: false
+      - key: DB_TYPE
+        value: mongodb
+      - key: OPENAI_API_KEY
+        sync: false
