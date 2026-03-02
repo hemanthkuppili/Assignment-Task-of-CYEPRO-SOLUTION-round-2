@@ -57,6 +57,7 @@ function showTab(tabName) {
     };
     document.getElementById('tab-title').textContent = titles[tabName];
 }
+window.showTab = showTab;
 
 // SOCKET.IO
 function initSocket() {
