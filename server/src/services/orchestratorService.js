@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { generateSimHash, hammingDistance } from '../utils/simhash.js';
 import { redis, isRedisMock } from '../config/redis.js';
@@ -12,7 +11,7 @@ import { config } from '../config/index.js';
  * Main event processing orchestrator.
  */
 export const processIncomingEvent = async (eventPayload) => {
-    const eventId = uuidv4();
+    const eventId = crypto.randomUUID();
     const { user_id, category, content } = eventPayload;
 
     const db = await getDb();
@@ -31,30 +30,38 @@ export const processIncomingEvent = async (eventPayload) => {
 
     await auditLog(eventId, 'INGESTION', 'PENDING', { source: eventPayload.source || 'CLIENT' });
 
-    // 1. EXACT DEDUPLICATION
-    const exactHash = crypto.createHash('sha256').update(content).digest('hex');
-    const dedupeKey = `dedupe:${user_id}:${exactHash}`;
-    const isDuplicate = await redis.get(dedupeKey);
-    if (isDuplicate) {
-        await auditLog(eventId, 'EXACT_DEDUPE', 'NEVER', { reason: 'Previous same message in 5min' });
-        await updateEventStatus(eventId, 'NEVER');
-        return { eventId, status: 'NEVER', reason: 'Exact Duplicate' };
-    }
-    await redis.set(dedupeKey, '1', 'EX', 300); // 5 min TTL
-
-    // 2. NEAR-DUPLICATE DETECTION
-    const simhash = generateSimHash(content);
-    const recentSimhashKey = `simhash:${user_id}`;
-    const recentSimhashes = await redis.smembers(recentSimhashKey);
-    for (let recent of recentSimhashes) {
-        if (hammingDistance(BigInt(recent), simhash) <= 3) {
-            await auditLog(eventId, 'NEAR_DEDUPE', 'NEVER', { reason: 'Similar message recently detected' });
+    // 1. EXACT DEDUPLICATION (graceful if Redis unavailable)
+    try {
+        const exactHash = crypto.createHash('sha256').update(content).digest('hex');
+        const dedupeKey = `dedupe:${user_id}:${exactHash}`;
+        const isDuplicate = await redis.get(dedupeKey);
+        if (isDuplicate) {
+            await auditLog(eventId, 'EXACT_DEDUPE', 'NEVER', { reason: 'Previous same message in 5min' });
             await updateEventStatus(eventId, 'NEVER');
-            return { eventId, status: 'NEVER', reason: 'Near-Duplicate' };
+            return { eventId, status: 'NEVER', reason: 'Exact Duplicate' };
         }
+        await redis.set(dedupeKey, '1', 'EX', 300); // 5 min TTL
+    } catch (redisErr) {
+        console.warn('Redis dedupe skipped:', redisErr.message);
     }
-    await redis.sadd(recentSimhashKey, simhash.toString());
-    await redis.expire(recentSimhashKey, 1800); // 30 min sliding window
+
+    // 2. NEAR-DUPLICATE DETECTION (graceful if Redis unavailable)
+    try {
+        const simhash = generateSimHash(content);
+        const recentSimhashKey = `simhash:${user_id}`;
+        const recentSimhashes = await redis.smembers(recentSimhashKey);
+        for (let recent of recentSimhashes) {
+            if (hammingDistance(BigInt(recent), simhash) <= 3) {
+                await auditLog(eventId, 'NEAR_DEDUPE', 'NEVER', { reason: 'Similar message recently detected' });
+                await updateEventStatus(eventId, 'NEVER');
+                return { eventId, status: 'NEVER', reason: 'Near-Duplicate' };
+            }
+        }
+        await redis.sadd(recentSimhashKey, simhash.toString());
+        await redis.expire(recentSimhashKey, 1800); // 30 min sliding window
+    } catch (redisErr) {
+        console.warn('Redis simhash skipped:', redisErr.message);
+    }
 
     // 3. STATIC RULE CHECK
     const rules = await getDbRulesForCategory(category);
@@ -68,15 +75,18 @@ export const processIncomingEvent = async (eventPayload) => {
     }
 
     // 4. AI CLASSIFICATION (ASYNC)
-    // We add to AI classification queue and return "PENDING" to the initial caller
     if (isRedisMock()) {
-        // Trigger simulation instantly (Fire & Forget)
         simulateBackgroundProcess({ eventId, user_id, category, content });
     } else {
-        await aiClassificationQueue.add('classify', { eventId, user_id, category, content }, {
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 2000 }
-        });
+        try {
+            await aiClassificationQueue.add('classify', { eventId, user_id, category, content }, {
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 2000 }
+            });
+        } catch (qErr) {
+            console.warn('Queue add failed, running simulation:', qErr.message);
+            simulateBackgroundProcess({ eventId, user_id, category, content });
+        }
     }
 
     await auditLog(eventId, 'AI_QUEUE', 'PENDING', { queue: 'AI_CLASSIFICATION' });
